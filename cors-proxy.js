@@ -42,7 +42,11 @@ app.use('/proxy', (req, res, next) => {
   // Special handling for .m3u8 playlists
   if (target.endsWith('.m3u8')) {
     const http = target.startsWith('https') ? require('https') : require('http');
-    http.get(target, { headers: req.headers }, (proxyRes) => {
+    // Forward User-Agent and Referer headers if present
+    const headers = { ...req.headers };
+    if (req.headers['user-agent']) headers['user-agent'] = req.headers['user-agent'];
+    if (req.headers['referer']) headers['referer'] = req.headers['referer'];
+    http.get(target, { headers }, (proxyRes) => {
       let data = '';
       proxyRes.on('data', chunk => data += chunk);
       proxyRes.on('end', () => {
@@ -68,6 +72,13 @@ app.use('/proxy', (req, res, next) => {
       // Forward Range header for video streaming
       if (req.headers['range']) {
         proxyReq.setHeader('Range', req.headers['range']);
+      }
+      // Forward User-Agent and Referer headers
+      if (req.headers['user-agent']) {
+        proxyReq.setHeader('User-Agent', req.headers['user-agent']);
+      }
+      if (req.headers['referer']) {
+        proxyReq.setHeader('Referer', req.headers['referer']);
       }
     },
     onProxyRes: (proxyRes, req, res) => {
