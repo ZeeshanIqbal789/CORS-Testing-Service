@@ -1,6 +1,8 @@
 const express = require('express');
 const cors = require('cors');
 const { createProxyMiddleware } = require('http-proxy-middleware');
+const { URL } = require('url');
+const stream = require('stream');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,12 +16,47 @@ app.use((req, res, next) => {
   next();
 });
 
+// Helper to rewrite .m3u8 playlist URLs
+function rewritePlaylist(playlist, baseUrl, proxyBase) {
+  return playlist.replace(/^(?!#)([^\r\n]+)$/gm, (line) => {
+    // Ignore comments and empty lines
+    if (line.startsWith('http') || line.startsWith('#')) return line;
+    // Absolute path
+    let newUrl;
+    try {
+      newUrl = new URL(line, baseUrl).toString();
+    } catch {
+      return line;
+    }
+    return `${proxyBase}?url=${encodeURIComponent(newUrl)}`;
+  });
+}
+
 // Proxy endpoint: /proxy?url=https://example.com
 app.use('/proxy', (req, res, next) => {
   const target = req.query.url;
   if (!target) {
     return res.status(400).json({ error: 'Missing url query parameter' });
   }
+  // Special handling for .m3u8 playlists
+  if (target.endsWith('.m3u8')) {
+    const http = target.startsWith('https') ? require('https') : require('http');
+    http.get(target, { headers: req.headers }, (proxyRes) => {
+      let data = '';
+      proxyRes.on('data', chunk => data += chunk);
+      proxyRes.on('end', () => {
+        // Rewrite segment URLs
+        const rewritten = rewritePlaylist(data, target, req.baseUrl + req.path);
+        res.header('Content-Type', 'application/vnd.apple.mpegurl');
+        res.header('Access-Control-Allow-Origin', '*');
+        res.send(rewritten);
+      });
+    }).on('error', (err) => {
+      res.status(500).json({ error: 'Proxy error', details: err.message });
+    });
+    return;
+  }
+  // For all other files (segments, etc), use proxy middleware
   return createProxyMiddleware({
     target,
     changeOrigin: true,
