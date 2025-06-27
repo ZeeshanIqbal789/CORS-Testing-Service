@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range, Cookie');
   res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
   next();
 });
@@ -88,15 +88,21 @@ app.use('/proxy', (req, res, next) => {
     selfHandleResponse: false, // Let proxy handle streaming
     pathRewrite: { '^/proxy': '' },
     onProxyReq: (proxyReq, req, res) => {
-      // Forward all headers
+      // Forward all headers, including Cookie and Origin
       Object.entries(req.headers).forEach(([key, value]) => {
         proxyReq.setHeader(key, value);
       });
+      if (req.headers['cookie']) {
+        proxyReq.setHeader('Cookie', req.headers['cookie']);
+      }
+      if (req.headers['origin']) {
+        proxyReq.setHeader('Origin', req.headers['origin']);
+      }
     },
     onProxyRes: (proxyRes, req, res) => {
       // Ensure CORS headers are set on proxied responses
       res.header('Access-Control-Allow-Origin', '*');
-      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+      res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range, Cookie');
       res.header('Access-Control-Allow-Methods', 'GET, OPTIONS');
     },
     onError: (err, req, res) => {
