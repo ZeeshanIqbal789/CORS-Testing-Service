@@ -40,6 +40,8 @@ app.use('/proxy', (req, res, next) => {
   if (!target) {
     return res.status(400).json({ error: 'Missing url query parameter' });
   }
+  // Logging for debugging
+  console.log('Proxying:', target);
   // Special handling for .m3u8 playlists
   if (target.endsWith('.m3u8')) {
     const http = target.startsWith('https') ? require('https') : require('http');
@@ -64,7 +66,21 @@ app.use('/proxy', (req, res, next) => {
     });
     return;
   }
-  // For all other files (segments, etc), use proxy middleware
+  // Special handling for .ts segment files
+  if (target.endsWith('.ts')) {
+    const http = target.startsWith('https') ? require('https') : require('http');
+    const headers = { ...req.headers };
+    const agent = target.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined;
+    http.get(target, { headers, agent }, (proxyRes) => {
+      res.header('Content-Type', 'video/mp2t');
+      res.header('Access-Control-Allow-Origin', '*');
+      proxyRes.pipe(res);
+    }).on('error', (err) => {
+      res.status(500).json({ error: 'Proxy error', details: err.message });
+    });
+    return;
+  }
+  // For all other files, use proxy middleware
   return createProxyMiddleware({
     target,
     changeOrigin: true,
@@ -72,17 +88,10 @@ app.use('/proxy', (req, res, next) => {
     selfHandleResponse: false, // Let proxy handle streaming
     pathRewrite: { '^/proxy': '' },
     onProxyReq: (proxyReq, req, res) => {
-      // Forward Range header for video streaming
-      if (req.headers['range']) {
-        proxyReq.setHeader('Range', req.headers['range']);
-      }
-      // Forward User-Agent and Referer headers
-      if (req.headers['user-agent']) {
-        proxyReq.setHeader('User-Agent', req.headers['user-agent']);
-      }
-      if (req.headers['referer']) {
-        proxyReq.setHeader('Referer', req.headers['referer']);
-      }
+      // Forward all headers
+      Object.entries(req.headers).forEach(([key, value]) => {
+        proxyReq.setHeader(key, value);
+      });
     },
     onProxyRes: (proxyRes, req, res) => {
       // Ensure CORS headers are set on proxied responses
