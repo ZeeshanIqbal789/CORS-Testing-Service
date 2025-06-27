@@ -4,6 +4,7 @@ const cors = require('cors');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 const { URL } = require('url');
 const stream = require('stream');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -46,7 +47,9 @@ app.use('/proxy', (req, res, next) => {
     const headers = { ...req.headers };
     if (req.headers['user-agent']) headers['user-agent'] = req.headers['user-agent'];
     if (req.headers['referer']) headers['referer'] = req.headers['referer'];
-    http.get(target, { headers }, (proxyRes) => {
+    // Use agent to ignore SSL errors
+    const agent = target.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined;
+    http.get(target, { headers, agent }, (proxyRes) => {
       let data = '';
       proxyRes.on('data', chunk => data += chunk);
       proxyRes.on('end', () => {
@@ -65,7 +68,7 @@ app.use('/proxy', (req, res, next) => {
   return createProxyMiddleware({
     target,
     changeOrigin: true,
-    secure: false,
+    secure: false, // Ignore SSL errors for upstream
     selfHandleResponse: false, // Let proxy handle streaming
     pathRewrite: { '^/proxy': '' },
     onProxyReq: (proxyReq, req, res) => {
