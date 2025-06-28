@@ -1,7 +1,9 @@
 // Redeploy trigger: June 28, 2025
 // Puppeteer-based proxy to extract and stream protected video links
 const express = require('express');
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-extra');
+const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+puppeteer.use(StealthPlugin());
 const cors = require('cors');
 const http = require('http');
 const https = require('https');
