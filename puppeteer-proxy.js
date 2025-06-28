@@ -16,15 +16,24 @@ async function extractM3U8FromNetwork(page) {
   return new Promise(async (resolve) => {
     let foundUrl = null;
     await page.setRequestInterception(true);
-    page.on('request', (req) => {
+    function onRequest(req) {
       if (!foundUrl && req.url().includes('.m3u8')) {
         foundUrl = req.url();
+        page.removeListener('request', onRequest);
         resolve(foundUrl);
       }
-      req.continue();
-    });
+      try {
+        req.continue();
+      } catch (e) {
+        // Ignore if interception is off
+      }
+    }
+    page.on('request', onRequest);
     // Wait up to 10 seconds for .m3u8
-    setTimeout(() => resolve(foundUrl), 10000);
+    setTimeout(() => {
+      page.removeListener('request', onRequest);
+      resolve(foundUrl);
+    }, 10000);
   });
 }
 
