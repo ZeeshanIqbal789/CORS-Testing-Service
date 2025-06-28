@@ -150,6 +150,7 @@ app.get('/stream', async (req, res) => {
 // Endpoint: /stream/segment?segmentUrl=...&cookies=...
 app.get('/stream/segment', async (req, res) => {
   const { segmentUrl, cookies } = req.query;
+  console.log('Proxying segment:', segmentUrl);
   if (!segmentUrl || !cookies) {
     return res.status(400).json({ error: 'Missing segmentUrl or cookies' });
   }
@@ -166,11 +167,30 @@ app.get('/stream/segment', async (req, res) => {
       'Cookie': cookieHeader,
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     }
-  }, (proxyRes) => {
-    // Forward content-type and length
-    if (proxyRes.headers['content-type']) res.setHeader('Content-Type', proxyRes.headers['content-type']);
-    if (proxyRes.headers['content-length']) res.setHeader('Content-Length', proxyRes.headers['content-length']);
-    proxyRes.pipe(res);
+  }, async (proxyRes) => {
+    // If this is a playlist (m3u8), rewrite recursively
+    if (segmentUrl.endsWith('.m3u8')) {
+      let data = '';
+      proxyRes.on('data', chunk => data += chunk);
+      proxyRes.on('end', () => {
+        const baseUrl = segmentUrl.substring(0, segmentUrl.lastIndexOf('/') + 1);
+        const rewritten = data.replace(/^(?!#)([^\r\n]+)$/gm, (line) => {
+          if (line.startsWith('http')) {
+            return `${req.protocol}://${req.get('host')}/stream/segment?segmentUrl=${encodeURIComponent(line)}&cookies=${encodeURIComponent(Buffer.from(JSON.stringify(parsedCookies)).toString('base64'))}`;
+          } else if (line && !line.startsWith('#')) {
+            return `${req.protocol}://${req.get('host')}/stream/segment?segmentUrl=${encodeURIComponent(baseUrl + line)}&cookies=${encodeURIComponent(Buffer.from(JSON.stringify(parsedCookies)).toString('base64'))}`;
+          }
+          return line;
+        });
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.send(rewritten);
+      });
+    } else {
+      // Forward content-type and length for media chunks
+      if (proxyRes.headers['content-type']) res.setHeader('Content-Type', proxyRes.headers['content-type']);
+      if (proxyRes.headers['content-length']) res.setHeader('Content-Length', proxyRes.headers['content-length']);
+      proxyRes.pipe(res);
+    }
   }).on('error', (err) => {
     res.status(500).json({ error: 'Segment proxy error', details: err.message });
   });
