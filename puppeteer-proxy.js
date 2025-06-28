@@ -201,8 +201,8 @@ app.get('/stream/segment', async (req, res) => {
   const client = segmentUrl.startsWith('https') ? https : http;
   client.get(segmentUrl, {
     headers: {
-      'Cookie': cookieHeader,
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36',
+      'Accept': '*/*'
     }
   }, async (proxyRes) => {
     // If this is a playlist (m3u8), rewrite recursively
