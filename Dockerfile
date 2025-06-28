@@ -28,9 +28,6 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV CHROMIUM_PATH="$(which chromium || which chromium-browser || true)"
-
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --production

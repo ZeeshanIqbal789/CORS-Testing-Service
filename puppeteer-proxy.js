@@ -54,8 +54,7 @@ app.get('/extract', async (req, res) => {
         '--disable-features=site-per-process',
         '--window-size=1920,1080'
       ],
-      headless: true,
-      executablePath: process.env.CHROMIUM_PATH || undefined
+      headless: true
     });
     const page = await browser.newPage();
     // Intercept network for .m3u8
@@ -112,8 +111,7 @@ app.get('/stream', async (req, res) => {
         '--disable-features=site-per-process',
         '--window-size=1920,1080'
       ],
-      headless: true,
-      executablePath: process.env.CHROMIUM_PATH || undefined
+      headless: true
     });
     const page = await browser.newPage();
     // Intercept network for .m3u8
