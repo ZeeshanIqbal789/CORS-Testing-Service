@@ -11,6 +11,23 @@ const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 
+// Helper: extract .m3u8 from network requests
+async function extractM3U8FromNetwork(page) {
+  return new Promise(async (resolve) => {
+    let foundUrl = null;
+    await page.setRequestInterception(true);
+    page.on('request', (req) => {
+      if (!foundUrl && req.url().includes('.m3u8')) {
+        foundUrl = req.url();
+        resolve(foundUrl);
+      }
+      req.continue();
+    });
+    // Wait up to 10 seconds for .m3u8
+    setTimeout(() => resolve(foundUrl), 10000);
+  });
+}
+
 // Endpoint: /extract?url=PLAYER_PAGE_URL
 app.get('/extract', async (req, res) => {
   const { url } = req.query;
@@ -21,27 +38,30 @@ app.get('/extract', async (req, res) => {
   try {
     browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const page = await browser.newPage();
+    // Intercept network for .m3u8
+    const m3u8Promise = extractM3U8FromNetwork(page);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-    // Try to find the .m3u8 URL in the page (works for hls.js and many players)
-    const m3u8Url = await page.evaluate(() => {
-      // Look for <video src> or hls.js source
-      const video = document.querySelector('video');
-      if (video && video.src && video.src.endsWith('.m3u8')) return video.src;
-      // Look for hls.js loadSource
-      if (window.hls && window.hls.url) return window.hls.url;
-      // Try to find in scripts
-      const scripts = Array.from(document.scripts).map(s => s.textContent);
-      for (const script of scripts) {
-        const match = script && script.match(/(https?:\/\/[^'"\s]+\.m3u8[^'"\s]*)/);
-        if (match) return match[1];
-      }
-      return null;
-    });
+    // Wait for video or a few seconds
+    await page.waitForTimeout(5000);
+    let m3u8Url = await m3u8Promise;
+    // Fallback: try to extract from DOM/scripts
+    if (!m3u8Url) {
+      m3u8Url = await page.evaluate(() => {
+        const video = document.querySelector('video');
+        if (video && video.src && video.src.endsWith('.m3u8')) return video.src;
+        if (window.hls && window.hls.url) return window.hls.url;
+        const scripts = Array.from(document.scripts).map(s => s.textContent);
+        for (const script of scripts) {
+          const match = script && script.match(/(https?:\/\/[^'"\s]+\.m3u8[^'"\s]*)/);
+          if (match) return match[1];
+        }
+        return null;
+      });
+    }
     if (!m3u8Url) {
       await browser.close();
       return res.status(404).json({ error: 'No .m3u8 URL found on page' });
     }
-    // Get cookies for the domain
     const cookies = await page.cookies();
     await browser.close();
     res.json({ m3u8Url, cookies });
@@ -61,27 +81,28 @@ app.get('/stream', async (req, res) => {
   try {
     browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const page = await browser.newPage();
+    // Intercept network for .m3u8
+    const m3u8Promise = extractM3U8FromNetwork(page);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-    // Try to find the .m3u8 URL in the page (works for hls.js and many players)
-    const m3u8Url = await page.evaluate(() => {
-      // Look for <video src> or hls.js source
-      const video = document.querySelector('video');
-      if (video && video.src && video.src.endsWith('.m3u8')) return video.src;
-      // Look for hls.js loadSource
-      if (window.hls && window.hls.url) return window.hls.url;
-      // Try to find in scripts
-      const scripts = Array.from(document.scripts).map(s => s.textContent);
-      for (const script of scripts) {
-        const match = script && script.match(/(https?:\/\/[^'"\s]+\.m3u8[^'"\s]*)/);
-        if (match) return match[1];
-      }
-      return null;
-    });
+    await page.waitForTimeout(5000);
+    let m3u8Url = await m3u8Promise;
+    if (!m3u8Url) {
+      m3u8Url = await page.evaluate(() => {
+        const video = document.querySelector('video');
+        if (video && video.src && video.src.endsWith('.m3u8')) return video.src;
+        if (window.hls && window.hls.url) return window.hls.url;
+        const scripts = Array.from(document.scripts).map(s => s.textContent);
+        for (const script of scripts) {
+          const match = script && script.match(/(https?:\/\/[^'"\s]+\.m3u8[^'"\s]*)/);
+          if (match) return match[1];
+        }
+        return null;
+      });
+    }
     if (!m3u8Url) {
       await browser.close();
       return res.status(404).json({ error: 'No .m3u8 URL found on page' });
     }
-    // Get cookies for the domain
     const cookies = await page.cookies();
     await browser.close();
     // Proxy the .m3u8 playlist
