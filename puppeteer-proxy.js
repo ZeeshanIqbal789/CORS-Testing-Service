@@ -1,9 +1,7 @@
 // Redeploy trigger: June 28, 2025
 // Puppeteer-based proxy to extract and stream protected video links
 const express = require('express');
-const puppeteer = require('puppeteer-extra');
-const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-puppeteer.use(StealthPlugin());
+const puppeteer = require('puppeteer');
 const cors = require('cors');
 const http = require('http');
 const https = require('https');
@@ -68,15 +66,7 @@ app.get('/extract', async (req, res) => {
     browser = await puppeteer.launch({
       args: [
         '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-        '--no-zygote',
-        '--disable-software-rasterizer',
-        '--disable-accelerated-2d-canvas',
-        '--disable-features=site-per-process',
-        '--window-size=1920,1080'
+        '--disable-setuid-sandbox'
       ],
       headless: true
     });
@@ -129,15 +119,7 @@ app.get('/stream', async (req, res) => {
     browser = await puppeteer.launch({
       args: [
         '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--single-process',
-        '--no-zygote',
-        '--disable-software-rasterizer',
-        '--disable-accelerated-2d-canvas',
-        '--disable-features=site-per-process',
-        '--window-size=1920,1080'
+        '--disable-setuid-sandbox'
       ],
       headless: true
     });
