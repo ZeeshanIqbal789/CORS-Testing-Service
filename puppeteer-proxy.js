@@ -144,8 +144,10 @@ app.get('/stream', async (req, res) => {
     }
     if (!m3u8Url) {
       await browser.close();
+      console.error('No .m3u8 URL found for', url);
       return res.status(404).json({ error: 'No .m3u8 URL found on page' });
     }
+    console.log('Extracted m3u8Url:', m3u8Url);
     const cookies = await page.cookies();
     await browser.close();
     // Proxy the .m3u8 playlist and rewrite URLs
@@ -161,6 +163,8 @@ app.get('/stream', async (req, res) => {
       let data = '';
       proxyRes.on('data', chunk => data += chunk);
       proxyRes.on('end', () => {
+        console.log('Fetched playlist for', m3u8Url, '\
+First 500 chars:', data.slice(0, 500));
         // Rewrite all URLs in the playlist to go through /stream/segment
         const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
         const encodedCookies = encodeURIComponent(Buffer.from(JSON.stringify(cookies)).toString('base64'));
@@ -177,10 +181,12 @@ app.get('/stream', async (req, res) => {
         res.send(rewritten);
       });
     }).on('error', (err) => {
+      console.error('Proxy error fetching playlist:', err.message);
       res.status(500).json({ error: 'Proxy error', details: err.message });
     });
   } catch (err) {
     if (browser) await browser.close();
+    console.error('Puppeteer error:', err.message);
     res.status(500).json({ error: 'Puppeteer error', details: err.message });
   }
 });
