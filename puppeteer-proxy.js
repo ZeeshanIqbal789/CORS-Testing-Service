@@ -110,7 +110,7 @@ app.get('/stream', async (req, res) => {
     }
     const cookies = await page.cookies();
     await browser.close();
-    // Proxy the .m3u8 playlist
+    // Proxy the .m3u8 playlist and rewrite URLs
     const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
     const client = m3u8Url.startsWith('https') ? https : http;
     client.get(m3u8Url, {
@@ -119,9 +119,25 @@ app.get('/stream', async (req, res) => {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Referer': url
       }
-    }, (proxyRes) => {
-      res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-      proxyRes.pipe(res);
+    }, async (proxyRes) => {
+      let data = '';
+      proxyRes.on('data', chunk => data += chunk);
+      proxyRes.on('end', () => {
+        // Rewrite all URLs in the playlist to go through /stream/segment
+        const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+        const encodedCookies = encodeURIComponent(Buffer.from(JSON.stringify(cookies)).toString('base64'));
+        const rewritten = data.replace(/^(?!#)([^\r\n]+)$/gm, (line) => {
+          if (line.startsWith('http')) {
+            return `${req.protocol}://${req.get('host')}/stream/segment?segmentUrl=${encodeURIComponent(line)}&cookies=${encodedCookies}`;
+          } else if (line && !line.startsWith('#')) {
+            // Relative URL
+            return `${req.protocol}://${req.get('host')}/stream/segment?segmentUrl=${encodeURIComponent(baseUrl + line)}&cookies=${encodedCookies}`;
+          }
+          return line;
+        });
+        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.send(rewritten);
+      });
     }).on('error', (err) => {
       res.status(500).json({ error: 'Proxy error', details: err.message });
     });
@@ -129,6 +145,35 @@ app.get('/stream', async (req, res) => {
     if (browser) await browser.close();
     res.status(500).json({ error: 'Puppeteer error', details: err.message });
   }
+});
+
+// Endpoint: /stream/segment?segmentUrl=...&cookies=...
+app.get('/stream/segment', async (req, res) => {
+  const { segmentUrl, cookies } = req.query;
+  if (!segmentUrl || !cookies) {
+    return res.status(400).json({ error: 'Missing segmentUrl or cookies' });
+  }
+  let parsedCookies;
+  try {
+    parsedCookies = JSON.parse(Buffer.from(decodeURIComponent(cookies), 'base64').toString('utf8'));
+  } catch (e) {
+    return res.status(400).json({ error: 'Invalid cookies encoding' });
+  }
+  const cookieHeader = parsedCookies.map(c => `${c.name}=${c.value}`).join('; ');
+  const client = segmentUrl.startsWith('https') ? https : http;
+  client.get(segmentUrl, {
+    headers: {
+      'Cookie': cookieHeader,
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+    }
+  }, (proxyRes) => {
+    // Forward content-type and length
+    if (proxyRes.headers['content-type']) res.setHeader('Content-Type', proxyRes.headers['content-type']);
+    if (proxyRes.headers['content-length']) res.setHeader('Content-Length', proxyRes.headers['content-length']);
+    proxyRes.pipe(res);
+  }).on('error', (err) => {
+    res.status(500).json({ error: 'Segment proxy error', details: err.message });
+  });
 });
 
 app.listen(PORT, () => {
