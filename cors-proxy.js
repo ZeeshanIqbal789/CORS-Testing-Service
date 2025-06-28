@@ -1,4 +1,4 @@
-// Redeploy trigger: June 27, 2025
+// Redeploy trigger: June 28, 2025
 const express = require('express');
 const cors = require('cors');
 const { createProxyMiddleware } = require('http-proxy-middleware');
@@ -8,6 +8,9 @@ const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+const FIXED_REFERER = 'https://tvnation.me/';
+const FIXED_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 // Set CORS headers for all responses
 app.use(cors());
@@ -45,10 +48,9 @@ app.use('/proxy', (req, res, next) => {
   // Special handling for .m3u8 playlists
   if (target.endsWith('.m3u8')) {
     const http = target.startsWith('https') ? require('https') : require('http');
-    // Forward User-Agent and Referer headers if present
     const headers = { ...req.headers };
-    if (req.headers['user-agent']) headers['user-agent'] = req.headers['user-agent'];
-    if (req.headers['referer']) headers['referer'] = req.headers['referer'];
+    headers['referer'] = FIXED_REFERER;
+    headers['user-agent'] = FIXED_USER_AGENT;
     // Use agent to ignore SSL errors
     const agent = target.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined;
     http.get(target, { headers, agent }, (proxyRes) => {
@@ -70,6 +72,8 @@ app.use('/proxy', (req, res, next) => {
   if (target.endsWith('.ts')) {
     const http = target.startsWith('https') ? require('https') : require('http');
     const headers = { ...req.headers };
+    headers['referer'] = FIXED_REFERER;
+    headers['user-agent'] = FIXED_USER_AGENT;
     const agent = target.startsWith('https') ? new https.Agent({ rejectUnauthorized: false }) : undefined;
     http.get(target, { headers, agent }, (proxyRes) => {
       res.header('Content-Type', 'video/mp2t');
@@ -88,16 +92,12 @@ app.use('/proxy', (req, res, next) => {
     selfHandleResponse: false, // Let proxy handle streaming
     pathRewrite: { '^/proxy': '' },
     onProxyReq: (proxyReq, req, res) => {
-      // Forward all headers, including Cookie and Origin
+      // Forward all headers, but set fixed Referer and User-Agent
       Object.entries(req.headers).forEach(([key, value]) => {
         proxyReq.setHeader(key, value);
       });
-      if (req.headers['cookie']) {
-        proxyReq.setHeader('Cookie', req.headers['cookie']);
-      }
-      if (req.headers['origin']) {
-        proxyReq.setHeader('Origin', req.headers['origin']);
-      }
+      proxyReq.setHeader('Referer', FIXED_REFERER);
+      proxyReq.setHeader('User-Agent', FIXED_USER_AGENT);
     },
     onProxyRes: (proxyRes, req, res) => {
       // Ensure CORS headers are set on proxied responses
