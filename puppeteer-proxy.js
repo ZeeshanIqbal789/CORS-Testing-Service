@@ -41,7 +41,22 @@ app.get('/extract', async (req, res) => {
   }
   let browser;
   try {
-    browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    browser = await puppeteer.launch({
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+        '--no-zygote',
+        '--disable-software-rasterizer',
+        '--disable-accelerated-2d-canvas',
+        '--disable-features=site-per-process',
+        '--window-size=1920,1080'
+      ],
+      headless: true,
+      executablePath: process.env.CHROMIUM_PATH || undefined
+    });
     const page = await browser.newPage();
     // Intercept network for .m3u8
     const m3u8Promise = extractM3U8FromNetwork(page);
@@ -84,7 +99,22 @@ app.get('/stream', async (req, res) => {
   }
   let browser;
   try {
-    browser = await puppeteer.launch({ args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    browser = await puppeteer.launch({
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--single-process',
+        '--no-zygote',
+        '--disable-software-rasterizer',
+        '--disable-accelerated-2d-canvas',
+        '--disable-features=site-per-process',
+        '--window-size=1920,1080'
+      ],
+      headless: true,
+      executablePath: process.env.CHROMIUM_PATH || undefined
+    });
     const page = await browser.newPage();
     // Intercept network for .m3u8
     const m3u8Promise = extractM3U8FromNetwork(page);

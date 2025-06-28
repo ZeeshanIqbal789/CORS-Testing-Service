@@ -21,8 +21,15 @@ RUN apt-get update && apt-get install -y \
     libxdamage1 \
     libxrandr2 \
     xdg-utils \
+    libu2f-udev \
+    libvulkan1 \
+    libxss1 \
+    libxtst6 \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
+
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV CHROMIUM_PATH="$(which chromium || which chromium-browser || true)"
 
 WORKDIR /app
 COPY package*.json ./
