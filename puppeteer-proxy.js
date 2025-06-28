@@ -28,6 +28,11 @@ async function extractM3U8FromNetwork(page) {
   });
 }
 
+// Helper: wait for ms milliseconds
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // Endpoint: /extract?url=PLAYER_PAGE_URL
 app.get('/extract', async (req, res) => {
   const { url } = req.query;
@@ -42,7 +47,7 @@ app.get('/extract', async (req, res) => {
     const m3u8Promise = extractM3U8FromNetwork(page);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
     // Wait for video or a few seconds
-    await page.waitForTimeout(5000);
+    await delay(5000);
     let m3u8Url = await m3u8Promise;
     // Fallback: try to extract from DOM/scripts
     if (!m3u8Url) {
@@ -84,7 +89,7 @@ app.get('/stream', async (req, res) => {
     // Intercept network for .m3u8
     const m3u8Promise = extractM3U8FromNetwork(page);
     await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-    await page.waitForTimeout(5000);
+    await delay(5000);
     let m3u8Url = await m3u8Promise;
     if (!m3u8Url) {
       m3u8Url = await page.evaluate(() => {
