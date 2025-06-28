@@ -19,7 +19,7 @@ async function extractM3U8FromNetwork(page) {
     function onRequest(req) {
       if (!foundUrl && req.url().includes('.m3u8')) {
         foundUrl = req.url();
-        page.removeListener('request', onRequest);
+        page.off('request', onRequest);
         resolve(foundUrl);
       }
       try {
@@ -31,7 +31,7 @@ async function extractM3U8FromNetwork(page) {
     page.on('request', onRequest);
     // Wait up to 10 seconds for .m3u8
     setTimeout(() => {
-      page.removeListener('request', onRequest);
+      page.off('request', onRequest);
       resolve(foundUrl);
     }, 10000);
   });
