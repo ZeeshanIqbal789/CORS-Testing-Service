@@ -33,6 +33,28 @@ function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+// Helper: robust page navigation with retry on frame detachment
+async function safeGoto(page, url, options) {
+  try {
+    await page.goto(url, options);
+    return true;
+  } catch (err) {
+    if (err.message && err.message.includes('detached')) {
+      console.warn('Frame detached, retrying navigation...');
+      await delay(2000);
+      try {
+        await page.goto(url, options);
+        return true;
+      } catch (err2) {
+        console.error('Retry failed:', err2.message);
+        return false;
+      }
+    } else {
+      throw err;
+    }
+  }
+}
+
 // Endpoint: /extract?url=PLAYER_PAGE_URL
 app.get('/extract', async (req, res) => {
   const { url } = req.query;
@@ -59,7 +81,11 @@ app.get('/extract', async (req, res) => {
     const page = await browser.newPage();
     // Intercept network for .m3u8
     const m3u8Promise = extractM3U8FromNetwork(page);
-    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+    const navOk = await safeGoto(page, url, { waitUntil: 'networkidle2', timeout: 60000 });
+    if (!navOk) {
+      await browser.close();
+      return res.status(500).json({ error: 'Puppeteer error', details: 'Navigation failed due to frame detachment' });
+    }
     // Wait for video or a few seconds
     await delay(5000);
     let m3u8Url = await m3u8Promise;
