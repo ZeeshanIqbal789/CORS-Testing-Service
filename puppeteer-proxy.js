@@ -148,42 +148,26 @@ app.get('/stream', async (req, res) => {
       return res.status(404).json({ error: 'No .m3u8 URL found on page' });
     }
     console.log('Extracted m3u8Url:', m3u8Url);
-    const cookies = await page.cookies();
+    // Fetch playlist content using Puppeteer to preserve session
+    await page.setRequestInterception(false); // Disable interception for direct fetch
+    const playlistResponse = await page.goto(m3u8Url, { waitUntil: 'networkidle2', timeout: 30000 });
+    const playlistContent = await playlistResponse.text();
+    console.log('Fetched playlist for', m3u8Url, '\nFirst 500 chars:', playlistContent.slice(0, 500));
     await browser.close();
-    // Proxy the .m3u8 playlist and rewrite URLs
-    const cookieHeader = cookies.map(c => `${c.name}=${c.value}`).join('; ');
-    const client = m3u8Url.startsWith('https') ? https : http;
-    client.get(m3u8Url, {
-      headers: {
-        'Cookie': cookieHeader,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Referer': url
+    // Rewrite all URLs in the playlist to go through /stream/segment
+    const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
+    const encodedCookies = encodeURIComponent('[]'); // No cookies needed for /stream/segment since session is in Puppeteer
+    const rewritten = playlistContent.replace(/^(?!#)([^\r\n]+)$/gm, (line) => {
+      if (line.startsWith('http')) {
+        return `${req.protocol}://${req.get('host')}/stream/segment?segmentUrl=${encodeURIComponent(line)}&cookies=${encodedCookies}`;
+      } else if (line && !line.startsWith('#')) {
+        // Relative URL
+        return `${req.protocol}://${req.get('host')}/stream/segment?segmentUrl=${encodeURIComponent(baseUrl + line)}&cookies=${encodedCookies}`;
       }
-    }, async (proxyRes) => {
-      let data = '';
-      proxyRes.on('data', chunk => data += chunk);
-      proxyRes.on('end', () => {
-        console.log('Fetched playlist for', m3u8Url, '\
-First 500 chars:', data.slice(0, 500));
-        // Rewrite all URLs in the playlist to go through /stream/segment
-        const baseUrl = m3u8Url.substring(0, m3u8Url.lastIndexOf('/') + 1);
-        const encodedCookies = encodeURIComponent(Buffer.from(JSON.stringify(cookies)).toString('base64'));
-        const rewritten = data.replace(/^(?!#)([^\r\n]+)$/gm, (line) => {
-          if (line.startsWith('http')) {
-            return `${req.protocol}://${req.get('host')}/stream/segment?segmentUrl=${encodeURIComponent(line)}&cookies=${encodedCookies}`;
-          } else if (line && !line.startsWith('#')) {
-            // Relative URL
-            return `${req.protocol}://${req.get('host')}/stream/segment?segmentUrl=${encodeURIComponent(baseUrl + line)}&cookies=${encodedCookies}`;
-          }
-          return line;
-        });
-        res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
-        res.send(rewritten);
-      });
-    }).on('error', (err) => {
-      console.error('Proxy error fetching playlist:', err.message);
-      res.status(500).json({ error: 'Proxy error', details: err.message });
+      return line;
     });
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+    res.send(rewritten);
   } catch (err) {
     if (browser) await browser.close();
     console.error('Puppeteer error:', err.message);
